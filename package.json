@@ -1,0 +1,17 @@
+{
+  "name": "racingpoint-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp chatbot for RacingPoint eSports and Cafe",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@racingpoint/google": "file:../racingpoint-google",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "pino": "^9.0.0"
+  }
+}
