@@ -1,6 +1,7 @@
 const { gmail } = require('@racingpoint/google');
 const { getGoogleAuth } = require('./googleAuth');
-const ollamaService = require('./ollamaService');
+const claudeService = require('./claudeService');
+const config = require('../config');
 const { buildAdminPrompt } = require('../prompts/adminPrompt');
 const conversationService = require('./conversationService');
 const logger = require('../utils/logger');
@@ -28,7 +29,7 @@ async function processEmail(email) {
       { role: 'user', content: userMessage },
     ];
 
-    const reply = await ollamaService.chat(messages);
+    const reply = await claudeService.chat(messages, { model: config.claude.adminModel });
 
     // Save to conversation history
     conversationService.saveMessage(CONVERSATION_ID, 'user', userMessage);

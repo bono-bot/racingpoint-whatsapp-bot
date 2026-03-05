@@ -2,9 +2,10 @@ require('dotenv').config();
 
 module.exports = {
   port: parseInt(process.env.PORT, 10) || 3000,
-  ollama: {
-    url: process.env.OLLAMA_URL || 'http://localhost:32776',
-    model: process.env.OLLAMA_MODEL || 'llama3.1:8b',
+  claude: {
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    customerModel: process.env.CLAUDE_MODEL_CUSTOMER || 'claude-haiku-4-5-20251001',
+    adminModel: process.env.CLAUDE_MODEL_ADMIN || 'claude-sonnet-4-6',
   },
   evolution: {
     url: process.env.EVOLUTION_API_URL || 'http://localhost:53622',

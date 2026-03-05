@@ -6,7 +6,7 @@ const MAX_HISTORY = 20;
 function getHistory(remoteJid) {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT role, content FROM messages
+    SELECT role, content, created_at FROM messages
     WHERE remote_jid = ?
     ORDER BY created_at DESC
     LIMIT ?

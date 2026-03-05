@@ -4,25 +4,19 @@ const config = require('../config');
 const router = Router();
 
 router.get('/health', async (_req, res) => {
-  const checks = { bot: 'ok', ollama: 'unknown' };
+  const checks = {
+    bot: 'ok',
+    claude: config.claude.apiKey ? 'configured' : 'missing_api_key',
+  };
 
-  try {
-    const resp = await fetch(`${config.ollama.url}/api/tags`);
-    if (resp.ok) {
-      const data = await resp.json();
-      const hasModel = data.models?.some(m => m.name === config.ollama.model);
-      checks.ollama = hasModel ? 'ok' : 'model_missing';
-    } else {
-      checks.ollama = 'error';
-    }
-  } catch {
-    checks.ollama = 'unreachable';
-  }
-
-  const healthy = checks.bot === 'ok' && checks.ollama === 'ok';
+  const healthy = checks.bot === 'ok' && checks.claude === 'configured';
   res.status(healthy ? 200 : 503).json({
     status: healthy ? 'healthy' : 'degraded',
     checks,
+    models: {
+      customer: config.claude.customerModel,
+      admin: config.claude.adminModel,
+    },
     uptime: process.uptime(),
   });
 });

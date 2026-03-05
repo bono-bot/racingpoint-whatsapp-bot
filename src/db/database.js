@@ -46,6 +46,20 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_bookings_jid ON bookings(remote_jid);
     CREATE INDEX IF NOT EXISTS idx_bookings_booking_id ON bookings(booking_id);
+
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      remote_jid TEXT UNIQUE NOT NULL,
+      full_name TEXT,
+      phone TEXT,
+      email TEXT,
+      age INTEGER,
+      registered BOOLEAN DEFAULT 0,
+      waiver_signed BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_customers_jid ON customers(remote_jid);
+    CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
   `);
 }
 
