@@ -18,5 +18,9 @@ module.exports = {
     refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
     adminNumbers: (process.env.GOOGLE_ADMIN_NUMBERS || '').split(',').filter(Boolean),
   },
+  racecontrol: {
+    apiUrl: process.env.RC_API_URL || 'https://app.racingpoint.cloud/api/v1',
+    terminalSecret: process.env.RC_TERMINAL_SECRET,
+  },
   logLevel: process.env.LOG_LEVEL || 'info',
 };

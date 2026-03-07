@@ -6,6 +6,7 @@ const conversationService = require('./conversationService');
 const rateLimiter = require('./rateLimiter');
 const googleCommandHandler = require('./googleCommandHandler');
 const bookingService = require('./bookingService');
+const racecontrolService = require('./racecontrolService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
 const { buildAdminPrompt } = require('../prompts/adminPrompt');
 const { enqueue } = require('../utils/queueManager');
@@ -13,6 +14,7 @@ const logger = require('../utils/logger');
 
 const HUMAN_HANDOFF_MARKER = '[HUMAN_HANDOFF]';
 const BOOKING_MARKER = '[BOOKING]';
+const RC_BOOKING_MARKER = '[RC_BOOKING]';
 const REGISTRATION_MARKER = '[REGISTRATION]';
 
 // Direct mode: when enabled, admin messages are saved but not auto-replied
@@ -119,6 +121,47 @@ async function processMessage(remoteJid, text, pushName) {
     // Get AI response
     const model = isAdmin ? config.claude.adminModel : config.claude.customerModel;
     const reply = await claudeService.chat(messages, { model });
+
+    // Check for RC booking tag (registered customers via RaceControl)
+    if (reply.includes(RC_BOOKING_MARKER) && racecontrolService.isConfigured()) {
+      const rcData = parseRcBookingTag(reply);
+      if (rcData) {
+        try {
+          const result = await racecontrolService.bookSession(rcData.phone, rcData.tier_id, rcData.experience_id || null);
+
+          let confirmationMsg;
+          if (result.status === 'booked') {
+            confirmationMsg =
+              `Your session is booked! Here are the details:\n\n` +
+              `*Name:* ${result.driver_name}\n` +
+              `*Pod:* ${result.pod_number}\n` +
+              `*PIN:* ${result.pin}\n` +
+              `*Duration:* ${result.duration_minutes} minutes\n` +
+              `*Plan:* ${result.tier_name}\n` +
+              (result.wallet_debit_paise ? `*Debited:* ₹${result.wallet_debit_paise / 100}\n` : '') +
+              `\nHead to your pod and enter the PIN on the lock screen. Enjoy your session!`;
+          } else {
+            // Booking failed — show reason
+            confirmationMsg = result.message || 'Sorry, the booking could not be completed. Please visit reception for help.';
+          }
+
+          conversationService.saveMessage(remoteJid, 'user', text);
+          conversationService.saveMessage(remoteJid, 'assistant', confirmationMsg);
+          await evolutionService.sendText(remoteJid, confirmationMsg);
+          await evolutionService.sendPresence(remoteJid, 'paused');
+          logger.info({ remoteJid, bookingId: result.booking_id, status: result.status }, 'RC booking processed via WhatsApp');
+          return;
+        } catch (rcErr) {
+          logger.error({ err: rcErr, remoteJid, rcData }, 'Failed to create RC booking');
+          const errorMsg = "I'm sorry, there was an issue booking your session. Please try again, or contact us directly at +91 7981264279.";
+          conversationService.saveMessage(remoteJid, 'user', text);
+          conversationService.saveMessage(remoteJid, 'assistant', errorMsg);
+          await evolutionService.sendText(remoteJid, errorMsg);
+          await evolutionService.sendPresence(remoteJid, 'paused');
+          return;
+        }
+      }
+    }
 
     // Check for booking tag
     if (reply.includes(BOOKING_MARKER)) {
@@ -241,6 +284,24 @@ async function processMessage(remoteJid, text, pushName) {
       logger.error({ err: sendErr, remoteJid }, 'Failed to send error message');
     }
   }
+}
+
+function parseRcBookingTag(text) {
+  const match = text.match(/\[RC_BOOKING\]\s*(.+)/);
+  if (!match) return null;
+
+  const parts = match[1].split('|').map(p => p.trim());
+  const data = {};
+  for (const part of parts) {
+    const [key, ...valueParts] = part.split('=');
+    data[key.trim()] = valueParts.join('=').trim();
+  }
+
+  if (!data.phone || !data.tier_id) {
+    return null;
+  }
+
+  return data;
 }
 
 function parseBookingTag(text) {
