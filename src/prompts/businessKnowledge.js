@@ -1,4 +1,4 @@
-module.exports = `
+const businessKnowledge = `
 ## About RacingPoint
 RacingPoint is a premium sim racing eSports arena and cafe located in Hyderabad, India. It offers professional-grade sim racing experiences, PS5 gaming, and a cafe with a full food & beverage menu.
 
@@ -20,34 +20,94 @@ RacingPoint is a premium sim racing eSports arena and cafe located in Hyderabad,
 
 ### Sim Racing (8 rigs)
 - Equipment per rig: Triple 32" 180Hz monitors, Conspit products (wheel base, pedals, seat), PC with AMD Ryzen 7 9700X, NVIDIA RTX 5070 Ti, 32GB RAM
-- Price: ₹700 for 30 minutes, ₹900 per hour per rig
+- Standard pricing: ₹700 for 30 minutes, ₹900 per hour per rig
+- Dynamic pricing:
+  - Weekday off-peak hours: ~22% discount (approx ₹546/30min, ₹702/hr)
+  - Weekend peak: ~22% premium (approx ₹854/30min, ₹1098/hr)
+  - Groups of 4+: ~11% discount automatically applied
+- First-timers get a FREE 5-minute trial — zero risk, no wallet required
 - Games available: Assetto Corsa, Assetto Corsa EVO, iRacing, F1 25, LeMans Ultimate, Forza Horizon 5, and more
-- If a customer requests a specific game we don't currently have installed, we can make arrangements to get it set up
+- If a customer requests a specific game, we can arrange to get it set up
 
 ### PS5 Gaming (3 consoles)
 - Price: ₹500 per hour
 - Extra controller: ₹100
 - Popular games: FC 25 (FIFA), GTA, Call of Duty, Gran Turismo, and more
 
+## Wallet & Credits System
+- 1 Credit = ₹1. All payments go through wallet credits.
+- Top up with Cash, Card, or UPI at the venue — credits are loaded instantly
+- Credits are debited when your session starts (not at the end)
+- Your balance carries over — use it for racing, cafe, or merchandise
+- You can check your balance anytime on the RacingPoint app
+
+## Packages (great for groups and special occasions!)
+
+### Date Night — ₹1,800
+- 2 rigs for 1 hour + 2 drinks from the cafe
+- Perfect for couples who want a fun, unique date experience
+
+### Squad (4 Friends) — ₹3,200
+- 4 rigs for 1 hour with automatic group discount
+- Race each other on the same track — bragging rights included!
+
+### Birthday Bash — ₹8,000
+- 6 rigs for 2 hours + cake + drinks
+- Best for birthday celebrations — we handle the setup
+
+### Corporate Team Building — ₹15,000
+- All 8 rigs for 2 hours + tournament bracket + lunch
+- Ideal for company outings, team bonding, or client entertainment
+- Custom branding and tournament setup available
+
+### Student Special — ₹600/hour
+- 1 rig for 1 hour at a special weekday rate
+- Valid weekdays 12 PM – 4 PM (show student ID)
+
+## Referral Program
+- Every registered customer gets a unique referral code
+- When your friend signs up and completes their first paid session using your code:
+  - You get ₹100 in free credits
+  - Your friend gets ₹50 in free credits
+- Share your code — everyone wins!
+
 ## Events
 
-### CURRENT EVENT — February HotLap Challenge (ENDING SOON!)
-- The February HotLap Challenge ends at 2:00 AM on 1st March 2026 — this is the LAST CHANCE to participate!
-- Prize: Meta Quest 3 VR Headset
+### Monthly HotLap Challenges
+- We run monthly HotLap Challenge events with amazing prizes!
+- Past prizes include: Meta Quest 3 VR Headset, iPhone, PS5, iPad, Marshall headphones
 - Leaderboard and lap times: https://rps.racecentres.com/
-- Come in and set your best lap time before the deadline!
+- Follow on Instagram @racingpoint.esports for the latest event announcements
 
-### General
-- Monthly HotLap Challenge events with amazing prizes
-- Past prizes include: iPhone, PS5, iPad, Marshall headphones
-- Follow on Instagram @racingpoint.esports for event announcements — https://www.instagram.com/racingpoint.esports/
+### Tournaments & Time Trials
+- Regular tournaments with bracket-style competition
+- Weekly time trials on featured tracks — compete for the fastest time
+- Check the app or ask us for current events!
+
+## RacingPoint App (PWA)
+- Available at: app.racingpoint.cloud
+- Register, sign your waiver, book sessions, track your lap times
+- View your personal stats, session history, and leaderboard position
+- Add friends, join group sessions, enter tournaments
+- Telemetry coaching: see your sector times, compare with others, get improvement tips
 
 ## Sim Rig Rental
 - Sim rigs available for rent for external events, corporate team building, college fests, etc.
 - Contact for custom pricing: +91 7981264279
 
 ## Cafe Menu
+Full-service cafe with Starters, Burgers, Pizzas, Sandwiches & Wraps, Pasta, Rice Bowls, Beverages, and Desserts. Prices range from ₹20 (water) to ₹299 (wings, double burger).
+Popular items: Chicken Wings (₹299), Paneer Tikka (₹249), BBQ Chicken Pizza (₹299), Cold Coffee (₹149), Brownie with Ice Cream (₹199).
+Ask me about any category for the full list!
 
+## Booking & Reservations
+- Walk-ins welcome — no booking needed!
+- Customers can book through this chat, the app (app.racingpoint.cloud), or by calling +91 7981264279
+- Advance booking recommended on weekends and during events
+- For group bookings (4+), packages are the best value — ask about them!
+`;
+
+const cafeMenuFull = `
 ### Starters
 - Veg Spring Rolls – ₹199
 - Paneer Tikka – ₹249
@@ -99,10 +159,6 @@ RacingPoint is a premium sim racing eSports arena and cafe located in Hyderabad,
 ### Desserts
 - Brownie with Ice Cream – ₹199
 - Chocolate Lava Cake – ₹229
-
-## Booking & Reservations
-- Walk-ins welcome
-- Customers can book directly through this chat! Just tell us you'd like to book and we'll guide you through it
-- Advance booking recommended on weekends and during events
-- For group bookings or special requests, call/WhatsApp: +91 7981264279
 `;
+
+module.exports = { businessKnowledge, cafeMenuFull };
