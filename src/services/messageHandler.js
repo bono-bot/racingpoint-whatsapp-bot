@@ -9,6 +9,7 @@ const bookingService = require('./bookingService');
 const racecontrolService = require('./racecontrolService');
 const spamGuard = require('./spamGuard');
 const { BookingStateMachine } = require('./bookingStateMachine');
+const { startBookingFlow, handleBookingStep } = require('./bookingFlowHandler');
 const { getDb } = require('../db/database');
 const { getCustomerContext, buildContextBlock } = require('./customerContextService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
@@ -19,7 +20,6 @@ const { handleRamuMessage } = require('./ramuStockHandler');
 
 const HUMAN_HANDOFF_MARKER = '[HUMAN_HANDOFF]';
 const BOOKING_MARKER = '[BOOKING]';
-const RC_BOOKING_MARKER = '[RC_BOOKING]';
 const REGISTRATION_MARKER = '[REGISTRATION]';
 const ADMIN_JID = '917981264279@s.whatsapp.net';
 const RAMU_JID  = '917981399100@s.whatsapp.net';  // Ramu Bhai — stock alerts, not a customer
@@ -83,14 +83,18 @@ async function processMessage(remoteJid, text, pushName) {
       }
     }
 
-    // Check for active booking flow
+    // ── Active booking flow check ──────────────────────────────────
     const bookingMachine = new BookingStateMachine(getDb());
-    bookingMachine.expireStaleFlows(); // cleanup expired
+    bookingMachine.expireStaleFlows();
     const activeFlow = bookingMachine.getActiveFlow(remoteJid);
     if (activeFlow) {
-      // Delegate to booking flow handler (will be implemented in Plan 04)
-      // For now, just log and continue to normal AI path
-      logger.debug({ remoteJid, state: activeFlow.state }, 'Active booking flow detected');
+      await evolutionService.sendPresence(remoteJid, 'composing');
+      const handled = await handleBookingStep(remoteJid, text, activeFlow);
+      if (handled) {
+        await evolutionService.sendPresence(remoteJid, 'paused');
+        return;
+      }
+      // If not handled, fall through to normal AI
     }
 
     // Handle "reset" command
@@ -178,44 +182,62 @@ async function processMessage(remoteJid, text, pushName) {
     const model = isAdmin ? config.claude.adminModel : config.claude.customerModel;
     const reply = await claudeService.chat(systemPrompt, conversationMessages, { model });
 
-    // Check for RC booking tag (registered customers via RaceControl)
-    if (reply.includes(RC_BOOKING_MARKER) && racecontrolService.isConfigured()) {
-      const rcData = parseRcBookingTag(reply);
-      if (rcData) {
-        try {
-          const result = await racecontrolService.bookSession(rcData.phone, rcData.tier_id, rcData.experience_id || null);
+    // ── Booking intent detection (triggers state machine flow) ─────
+    const bookingIntentPatterns = [
+      /which game would you like/i,
+      /let me help you book/i,
+      /let's start your booking/i,
+      /i can book a session/i,
+      /would you like to book/i,
+    ];
+    const userBookingPatterns = [
+      /\b(book|booking|reserve|session)\b/i,
+      /\bwant to (race|play|drive)\b/i,
+      /\bbook (a|me|my)\b/i,
+    ];
 
-          let confirmationMsg;
-          if (result.status === 'booked') {
-            confirmationMsg =
-              `Your session is booked! Here are the details:\n\n` +
-              `*Name:* ${result.driver_name}\n` +
-              `*Pod:* ${result.pod_number}\n` +
-              `*PIN:* ${result.pin}\n` +
-              `*Duration:* ${result.duration_minutes} minutes\n` +
-              `*Plan:* ${result.tier_name}\n` +
-              (result.wallet_debit_paise ? `*Debited:* ₹${result.wallet_debit_paise / 100}\n` : '') +
-              `\nHead to your pod and enter the PIN on the lock screen. Enjoy your session!`;
-          } else {
-            // Booking failed — show reason
-            confirmationMsg = result.message || 'Sorry, the booking could not be completed. Please visit reception for help.';
-          }
+    const aiSuggestsBooking = bookingIntentPatterns.some(p => p.test(reply));
+    const userAsksBooking = userBookingPatterns.some(p => p.test(text));
 
-          conversationService.saveMessage(remoteJid, 'user', text);
-          conversationService.saveMessage(remoteJid, 'assistant', confirmationMsg);
-          await evolutionService.sendText(remoteJid, confirmationMsg);
-          await evolutionService.sendPresence(remoteJid, 'paused');
-          logger.info({ remoteJid, bookingId: result.booking_id, status: result.status }, 'RC booking processed via WhatsApp');
-          return;
-        } catch (rcErr) {
-          logger.error({ err: rcErr, remoteJid, rcData }, 'Failed to create RC booking');
-          const errorMsg = "I'm sorry, there was an issue booking your session. Please try again, or contact us directly at +91 7981264279.";
-          conversationService.saveMessage(remoteJid, 'user', text);
-          conversationService.saveMessage(remoteJid, 'assistant', errorMsg);
-          await evolutionService.sendText(remoteJid, errorMsg);
-          await evolutionService.sendPresence(remoteJid, 'paused');
-          return;
-        }
+    if ((aiSuggestsBooking || userAsksBooking) && !activeFlow && racecontrolService.isConfigured()) {
+      const ctx = getCustomerContext(remoteJid);
+      if (ctx && ctx.isRegistered) {
+        // Save the AI's response first, then start booking flow
+        conversationService.saveMessage(remoteJid, 'user', text);
+        conversationService.saveMessage(remoteJid, 'assistant', reply);
+        await evolutionService.sendText(remoteJid, reply);
+        // Start the booking flow after the conversational response
+        await startBookingFlow(remoteJid);
+        await evolutionService.sendPresence(remoteJid, 'paused');
+        return;
+      }
+      // Not registered — let the AI handle registration guidance
+    }
+
+    // ── Pod availability query (WA-04) ─────────────────────────────
+    const availabilityPatterns = [
+      /\b(any|are|how many).*(rig|pod|sim|station|available|free|open)\b/i,
+      /\b(rig|pod|sim|station).*(free|available|open)\b/i,
+      /\bavailability\b/i,
+    ];
+    if (availabilityPatterns.some(p => p.test(text)) && racecontrolService.isConfigured()) {
+      try {
+        const pods = await racecontrolService.getPodsStatus();
+        const availMsg = pods.available > 0
+          ? `${pods.available} of ${pods.total} rigs are free right now! Walk-ins are welcome, or I can help you book.`
+          : `All ${pods.total} rigs are currently in use. Walk-ins are first-come-first-served — rigs usually free up within 30 minutes.`;
+
+        // Prepend availability to AI reply
+        const fullReply = availMsg + '\n\n' + reply;
+        conversationService.saveMessage(remoteJid, 'user', text);
+        conversationService.saveMessage(remoteJid, 'assistant', fullReply);
+        await evolutionService.sendText(remoteJid, fullReply);
+        await evolutionService.sendPresence(remoteJid, 'paused');
+        logger.info({ remoteJid, available: pods.available, total: pods.total }, 'Pod availability served');
+        return;
+      } catch (err) {
+        logger.warn({ err, remoteJid }, 'Pod availability check failed, falling back to AI reply');
+        // Fall through to normal reply
       }
     }
 
@@ -325,6 +347,32 @@ async function processMessage(remoteJid, text, pushName) {
 
     // Send response
     await evolutionService.sendText(remoteJid, reply);
+
+    // ── Contextual referral sharing (WA-05) ────────────────────────
+    // Share referral code when conversation is positive and customer is a regular+
+    if (!isAdmin) {
+      const ctx = getCustomerContext(remoteJid);
+      if (ctx && ctx.referralCode && ctx.totalSessions >= 3) {
+        const positivePatterns = [
+          /\b(thanks|thank you|awesome|great|loved|amazing|fun|enjoyed|best)\b/i,
+          /\b(will come|see you|next time|come back|coming back)\b/i,
+        ];
+        if (positivePatterns.some(p => p.test(text))) {
+          const referralMsg = `By the way, share your referral code *${ctx.referralCode}* with friends — you get 100 Credits and they get 50 Credits!`;
+          // Only share once per conversation (check recent messages)
+          const recentHistory = conversationService.getHistory(remoteJid);
+          const alreadyShared = recentHistory.some(m =>
+            m.role === 'assistant' && m.content.includes(ctx.referralCode) && m.content.includes('referral')
+          );
+          if (!alreadyShared) {
+            await evolutionService.sendText(remoteJid, referralMsg);
+            conversationService.saveMessage(remoteJid, 'assistant', referralMsg);
+            logger.info({ remoteJid, referralCode: ctx.referralCode }, 'Referral code shared contextually');
+          }
+        }
+      }
+    }
+
     await evolutionService.sendPresence(remoteJid, 'paused');
 
     logger.info({ remoteJid, pushName, textLength: text.length, replyLength: reply.length }, 'Message handled');
@@ -340,24 +388,6 @@ async function processMessage(remoteJid, text, pushName) {
       logger.error({ err: sendErr, remoteJid }, 'Failed to send error message');
     }
   }
-}
-
-function parseRcBookingTag(text) {
-  const match = text.match(/\[RC_BOOKING\]\s*(.+)/);
-  if (!match) return null;
-
-  const parts = match[1].split('|').map(p => p.trim());
-  const data = {};
-  for (const part of parts) {
-    const [key, ...valueParts] = part.split('=');
-    data[key.trim()] = valueParts.join('=').trim();
-  }
-
-  if (!data.phone || !data.tier_id) {
-    return null;
-  }
-
-  return data;
 }
 
 function parseBookingTag(text) {
