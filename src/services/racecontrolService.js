@@ -60,8 +60,52 @@ async function bookSession(phone, pricingTierId, experienceId) {
   return data;
 }
 
+async function getPodsStatus() {
+  const url = `${RC_API_URL}/bot/pods-status`;
+  const res = await fetch(url, { headers: HEADERS });
+  const data = await res.json();
+  if (data.error) {
+    logger.error({ error: data.error }, 'RC pods-status fetch failed');
+    return { total: 0, available: 0, message: 'Unable to check availability right now.' };
+  }
+  return data; // { total, available, in_use, message }
+}
+
+async function getEvents() {
+  const url = `${RC_API_URL}/bot/events`;
+  const res = await fetch(url, { headers: HEADERS });
+  const data = await res.json();
+  if (data.error) {
+    logger.error({ error: data.error }, 'RC events fetch failed');
+    return { tournaments: [], time_trials: [], has_events: false };
+  }
+  return data;
+}
+
+async function getCustomerStats(phone) {
+  const url = `${RC_API_URL}/bot/customer-stats?phone=${encodeURIComponent(phone)}`;
+  const res = await fetch(url, { headers: HEADERS });
+  const data = await res.json();
+  if (data.error) {
+    logger.error({ phone, error: data.error }, 'RC customer-stats fetch failed');
+    return null;
+  }
+  return data;
+}
+
+async function registerLead(phone, name, intent) {
+  const url = `${RC_API_URL}/bot/register-lead`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify({ phone, name, source: 'whatsapp', intent }),
+  });
+  const data = await res.json();
+  return data;
+}
+
 function isConfigured() {
   return Boolean(RC_API_URL && RC_SECRET);
 }
 
-module.exports = { lookupCustomer, getPricing, bookSession, isConfigured };
+module.exports = { lookupCustomer, getPricing, bookSession, isConfigured, getPodsStatus, getEvents, getCustomerStats, registerLead };
