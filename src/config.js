@@ -3,9 +3,8 @@ require('dotenv').config();
 module.exports = {
   port: parseInt(process.env.PORT, 10) || 3000,
   claude: {
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    customerModel: process.env.CLAUDE_MODEL_CUSTOMER || 'claude-haiku-4-5-20251001',
-    adminModel: process.env.CLAUDE_MODEL_ADMIN || 'claude-sonnet-4-6',
+    customerModel: process.env.CLAUDE_MODEL_CUSTOMER || 'haiku',
+    adminModel: process.env.CLAUDE_MODEL_ADMIN || 'sonnet',
   },
   evolution: {
     url: process.env.EVOLUTION_API_URL || 'http://localhost:53622',

@@ -1,71 +1,45 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const config = require('../config');
 const logger = require('../utils/logger');
 
-const client = new Anthropic({ apiKey: config.claude.apiKey });
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-async function chat(messages, options = {}) {
-  // Extract system prompt (first message with role 'system')
-  let systemPrompt = '';
-  const conversationMessages = [];
+async function chat(systemPrompt, conversationMessages, options = {}) {
+  const model = options.model || process.env.CLAUDE_MODEL_CUSTOMER || 'claude-haiku-4-5-20251001';
 
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemPrompt += (systemPrompt ? '\n\n' : '') + msg.content;
-    } else {
-      conversationMessages.push({ role: msg.role, content: msg.content });
-    }
-  }
-
-  // Sanitize: Claude requires messages to alternate user/assistant and start with 'user'
-  const sanitized = [];
-  for (const msg of conversationMessages) {
-    const last = sanitized[sanitized.length - 1];
-    if (last && last.role === msg.role) {
-      last.content += '\n\n' + msg.content;
-    } else {
-      sanitized.push({ ...msg });
-    }
-  }
-
-  if (sanitized.length > 0 && sanitized[0].role === 'assistant') {
-    sanitized.unshift({ role: 'user', content: '(conversation continued)' });
-  }
-
-  // Claude API requires conversation to end with a user message
-  if (sanitized.length > 0 && sanitized[sanitized.length - 1].role === 'assistant') {
-    sanitized.push({ role: 'user', content: '(please continue)' });
-  }
-
-  const model = options.model || config.claude.customerModel;
-
-  logger.debug(
-    { model, messageCount: sanitized.length, hasSystem: !!systemPrompt },
-    'Sending request to Claude'
-  );
+  logger.debug({
+    model,
+    messageCount: conversationMessages.length,
+    systemLength: systemPrompt.length,
+  }, 'Sending request to Claude SDK');
 
   const response = await client.messages.create({
     model,
     max_tokens: 1024,
-    system: systemPrompt || undefined,
-    messages: sanitized,
+    system: [{
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' },
+    }],
+    messages: conversationMessages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })),
   });
 
-  const reply = response.content[0]?.text?.trim();
+  const reply = response.content[0].text;
 
   if (!reply) {
-    throw new Error('Empty response from Claude');
+    throw new Error('Empty response from Claude SDK');
   }
 
-  logger.debug(
-    {
-      model: response.model,
-      inputTokens: response.usage?.input_tokens,
-      outputTokens: response.usage?.output_tokens,
-      stopReason: response.stop_reason,
-    },
-    'Claude response received'
-  );
+  logger.debug({
+    model,
+    replyLength: reply.length,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheCreation: response.usage.cache_creation_input_tokens || 0,
+    cacheRead: response.usage.cache_read_input_tokens || 0,
+  }, 'Claude SDK response received');
 
   return reply;
 }

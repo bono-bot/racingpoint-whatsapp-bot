@@ -7,15 +7,20 @@ const rateLimiter = require('./rateLimiter');
 const googleCommandHandler = require('./googleCommandHandler');
 const bookingService = require('./bookingService');
 const racecontrolService = require('./racecontrolService');
+const spamGuard = require('./spamGuard');
+const { getCustomerContext, buildContextBlock } = require('./customerContextService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
 const { buildAdminPrompt } = require('../prompts/adminPrompt');
 const { enqueue } = require('../utils/queueManager');
 const logger = require('../utils/logger');
+const { handleRamuMessage } = require('./ramuStockHandler');
 
 const HUMAN_HANDOFF_MARKER = '[HUMAN_HANDOFF]';
 const BOOKING_MARKER = '[BOOKING]';
 const RC_BOOKING_MARKER = '[RC_BOOKING]';
 const REGISTRATION_MARKER = '[REGISTRATION]';
+const ADMIN_JID = '917981264279@s.whatsapp.net';
+const RAMU_JID  = '917981399100@s.whatsapp.net';  // Ramu Bhai — stock alerts, not a customer
 
 // Direct mode: when enabled, admin messages are saved but not auto-replied
 const DIRECT_MODE_FLAG = '/root/.bono-direct-mode';
@@ -40,6 +45,42 @@ async function handleMessage(parsed) {
 
 async function processMessage(remoteJid, text, pushName) {
   try {
+    // ── Ramu Bhai — stock tracker bypass (not a RacingPoint customer) ────
+    if (remoteJid === RAMU_JID) {
+      await evolutionService.sendPresence(remoteJid, 'composing');
+      const reply = handleRamuMessage(text);
+      await evolutionService.sendText(remoteJid, reply);
+      await evolutionService.sendPresence(remoteJid, 'paused');
+      logger.info({ remoteJid, pushName }, 'Ramu stock query handled');
+      return;
+    }
+
+    // Blocked user check — no response, no AI cost
+    if (spamGuard.isBlocked(remoteJid)) {
+      logger.info({ remoteJid }, 'Blocked user message ignored');
+      return;
+    }
+
+    // Spam analysis — accumulates score, auto-blocks at threshold
+    if (!googleCommandHandler.isAdmin(remoteJid)) {
+      const spam = spamGuard.analyzeMessage(remoteJid, text);
+      if (spam.shouldBlock) {
+        spamGuard.blockUser(remoteJid, 'Auto-blocked: spam score exceeded threshold');
+        await evolutionService.sendText(
+          remoteJid,
+          'This conversation has been ended due to repeated inappropriate or off-topic messages. If you believe this is a mistake, please contact us at +91 7981264279.'
+        );
+        // Notify admin
+        const phone = remoteJid.replace('@s.whatsapp.net', '');
+        await evolutionService.sendText(
+          ADMIN_JID,
+          `🚫 *Auto-blocked:* ${pushName || 'Unknown'} (${phone})\n*Reason:* Spam score ${spam.score}/${5}\n*Last message:* "${text.substring(0, 100)}"`
+        );
+        logger.warn({ remoteJid, pushName, score: spam.score }, 'User auto-blocked by spam guard');
+        return;
+      }
+    }
+
     // Handle "reset" command
     if (text.toLowerCase() === 'reset') {
       conversationService.clearHistory(remoteJid);
@@ -64,15 +105,11 @@ async function processMessage(remoteJid, text, pushName) {
             return;
           }
 
-          logger.info({ remoteJid }, 'Direct mode: no reply after 2min, falling back to AI');
+          logger.info({ remoteJid }, 'Direct mode: no reply after 15s, falling back to AI');
           const history = conversationService.getHistory(remoteJid);
           const systemPrompt = buildAdminPrompt();
-          const messages = [
-            { role: 'system', content: systemPrompt },
-            ...history.map(msg => ({ role: msg.role, content: msg.content })),
-          ];
-          const model = config.claude.adminModel;
-          const reply = await claudeService.chat(messages, { model });
+          const conversationMessages = history.map(msg => ({ role: msg.role, content: msg.content }));
+          const reply = await claudeService.chat(systemPrompt, conversationMessages, { model: config.claude.adminModel });
 
           conversationService.saveMessage(remoteJid, 'assistant', reply);
           await evolutionService.sendText(remoteJid, reply);
@@ -80,7 +117,7 @@ async function processMessage(remoteJid, text, pushName) {
         } catch (err) {
           logger.error({ err, remoteJid }, 'Direct mode: fallback reply failed');
         }
-      }, 2 * 60 * 1000);
+      }, 15 * 1000);
 
       return;
     }
@@ -109,18 +146,25 @@ async function processMessage(remoteJid, text, pushName) {
     // Load conversation history
     const history = conversationService.getHistory(remoteJid);
 
-    // Build messages array for Ollama
+    // Build messages with customer context enrichment
     const isAdmin = googleCommandHandler.isAdmin(remoteJid);
-    const systemPrompt = isAdmin ? buildAdminPrompt() : buildSystemPrompt();
-    const messages = [
-      { role: 'system', content: systemPrompt },
+    let systemPrompt;
+    if (isAdmin) {
+      systemPrompt = buildAdminPrompt();
+    } else {
+      // Enrich with customer data from RaceControl
+      const ctx = getCustomerContext(remoteJid);
+      const contextBlock = ctx ? buildContextBlock(ctx) : '';
+      systemPrompt = buildSystemPrompt(contextBlock);
+    }
+    const conversationMessages = [
       ...history.map(msg => ({ role: msg.role, content: msg.content })),
       { role: 'user', content: text },
     ];
 
     // Get AI response
     const model = isAdmin ? config.claude.adminModel : config.claude.customerModel;
-    const reply = await claudeService.chat(messages, { model });
+    const reply = await claudeService.chat(systemPrompt, conversationMessages, { model });
 
     // Check for RC booking tag (registered customers via RaceControl)
     if (reply.includes(RC_BOOKING_MARKER) && racecontrolService.isConfigured()) {
