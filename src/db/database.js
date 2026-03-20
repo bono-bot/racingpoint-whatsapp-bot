@@ -60,6 +60,42 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_customers_jid ON customers(remote_jid);
     CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      segment TEXT NOT NULL,
+      template_label TEXT,
+      total_recipients INTEGER DEFAULT 0,
+      sent_count INTEGER DEFAULT 0,
+      failed_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sending', 'completed', 'failed')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+      remote_jid TEXT NOT NULL,
+      customer_name TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+      sent_at DATETIME,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_campaign_messages_campaign ON campaign_messages(campaign_id);
+
+    CREATE TABLE IF NOT EXISTS booking_flows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      remote_jid TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'select_game',
+      data_json TEXT DEFAULT '{}',
+      phone TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME DEFAULT (datetime('now', '+10 minutes'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_booking_flows_jid
+      ON booking_flows(remote_jid, state);
   `);
 }
 

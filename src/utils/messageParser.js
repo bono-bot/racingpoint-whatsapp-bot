@@ -20,9 +20,12 @@ function parseWebhookPayload(body) {
     // Only handle individual chats (not groups)
     if (key.remoteJid.endsWith('@g.us')) return null;
 
-    // Extract text content
-    const text = message.conversation
+    // Extract text content (including interactive message responses)
+    let text = message.conversation
       || message.extendedTextMessage?.text
+      || message.buttonsResponseMessage?.selectedDisplayText
+      || message.listResponseMessage?.singleSelectReply?.selectedRowId
+      || message.templateButtonReplyMessage?.selectedDisplayText
       || null;
 
     if (!text || text.trim().length === 0) return null;
@@ -32,6 +35,14 @@ function parseWebhookPayload(body) {
       messageId: key.id,
       text: text.trim(),
       pushName: data.pushName || 'Customer',
+      isInteractive: !!(
+        message.buttonsResponseMessage ||
+        message.listResponseMessage ||
+        message.templateButtonReplyMessage
+      ),
+      selectedId: message.buttonsResponseMessage?.selectedButtonId
+        || message.listResponseMessage?.singleSelectReply?.selectedRowId
+        || null,
     };
   } catch (err) {
     logger.error({ err, body }, 'Failed to parse webhook payload');

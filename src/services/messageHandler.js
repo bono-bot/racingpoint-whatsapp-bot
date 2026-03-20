@@ -8,6 +8,8 @@ const googleCommandHandler = require('./googleCommandHandler');
 const bookingService = require('./bookingService');
 const racecontrolService = require('./racecontrolService');
 const spamGuard = require('./spamGuard');
+const { BookingStateMachine } = require('./bookingStateMachine');
+const { getDb } = require('../db/database');
 const { getCustomerContext, buildContextBlock } = require('./customerContextService');
 const { buildSystemPrompt } = require('../prompts/systemPrompt');
 const { buildAdminPrompt } = require('../prompts/adminPrompt');
@@ -79,6 +81,16 @@ async function processMessage(remoteJid, text, pushName) {
         logger.warn({ remoteJid, pushName, score: spam.score }, 'User auto-blocked by spam guard');
         return;
       }
+    }
+
+    // Check for active booking flow
+    const bookingMachine = new BookingStateMachine(getDb());
+    bookingMachine.expireStaleFlows(); // cleanup expired
+    const activeFlow = bookingMachine.getActiveFlow(remoteJid);
+    if (activeFlow) {
+      // Delegate to booking flow handler (will be implemented in Plan 04)
+      // For now, just log and continue to normal AI path
+      logger.debug({ remoteJid, state: activeFlow.state }, 'Active booking flow detected');
     }
 
     // Handle "reset" command
