@@ -27,7 +27,7 @@ RacingPoint is a premium sim racing eSports arena and cafe located in Hyderabad,
   - Groups of 4+: ~11% discount automatically applied
 - First-timers get a FREE 5-minute trial — zero risk, no wallet required
 - Games available: Assetto Corsa, Assetto Corsa EVO, iRacing, F1 25, LeMans Ultimate, Forza Horizon 5, and more
-- If a customer requests a specific game, we can arrange to get it set up
+- If a driver requests a specific game, we can arrange to get it set up
 
 ### PS5 Gaming (3 consoles)
 - Price: ₹500 per hour
@@ -65,7 +65,7 @@ RacingPoint is a premium sim racing eSports arena and cafe located in Hyderabad,
 - Valid weekdays 12 PM – 4 PM (show student ID)
 
 ## Referral Program
-- Every registered customer gets a unique referral code
+- Every registered driver gets a unique referral code
 - When your friend signs up and completes their first paid session using your code:
   - You get ₹100 in free credits
   - Your friend gets ₹50 in free credits
@@ -102,7 +102,7 @@ Ask me about any category for the full list!
 
 ## Booking & Reservations
 - Walk-ins welcome — no booking needed!
-- Customers can book through this chat, the app (app.racingpoint.cloud), or by calling +91 7981264279
+- Drivers can book through this chat, the app (app.racingpoint.cloud), or by calling +91 7981264279
 - Advance booking recommended on weekends and during events
 - For group bookings (4+), packages are the best value — ask about them!
 `;
