@@ -96,6 +96,16 @@ function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_booking_flows_jid
       ON booking_flows(remote_jid, state);
+
+    CREATE TABLE IF NOT EXISTS conversation_ownership (
+      remote_jid TEXT PRIMARY KEY,
+      state TEXT NOT NULL DEFAULT 'bot_active'
+        CHECK(state IN ('bot_active', 'human_active', 'cooldown')),
+      reason TEXT,
+      handoff_at DATETIME,
+      last_human_reply_at DATETIME,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 }
 
