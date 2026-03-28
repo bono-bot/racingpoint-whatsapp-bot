@@ -17,12 +17,24 @@ const { buildAdminPrompt } = require('../prompts/adminPrompt');
 const { enqueue } = require('../utils/queueManager');
 const logger = require('../utils/logger');
 const { handleRamuMessage } = require('./ramuStockHandler');
+const handoffService = require('./handoffService');
 
 const HUMAN_HANDOFF_MARKER = '[HUMAN_HANDOFF]';
 const BOOKING_MARKER = '[BOOKING]';
 const REGISTRATION_MARKER = '[REGISTRATION]';
 const ADMIN_JID = '917981264279@s.whatsapp.net';
-const RAMU_JID  = '917981399100@s.whatsapp.net';  // Ramu Bhai — stock alerts, not a customer
+const RAMU_JID  = '917981399100@s.whatsapp.net';
+
+// ── First-message sizzle greeting (SIZZLE-01 + FIX-03) ──
+const SIZZLE_GREETING = [
+  "Hey! Welcome to *RacingPoint eSports & Cafe* — Hyderabad's top sim racing spot!",
+  "",
+  "8 professional racing rigs with triple monitors, force feedback wheels, and the most realistic sim racing experience in the city.",
+  "",
+  "Free 5-min trial for first-timers!",
+  "",
+  "_This is an automated assistant. Say *human* anytime to reach our team!_",
+].join('\n');  // Ramu Bhai — stock alerts, not a customer
 
 // Direct mode: when enabled, admin messages are saved but not auto-replied
 const DIRECT_MODE_FLAG = '/root/.bono-direct-mode';
@@ -81,6 +93,15 @@ async function processMessage(remoteJid, text, pushName) {
         logger.warn({ remoteJid, pushName, score: spam.score }, 'User auto-blocked by spam guard');
         return;
       }
+    }
+
+
+    // ── Ownership gate: if human is active, bot stays silent ──────────
+    if (!handoffService.isBotActive(remoteJid) && !googleCommandHandler.isAdmin(remoteJid)) {
+      logger.info({ remoteJid, pushName }, 'Bot silent — human_active ownership');
+      // Still save the message so human sees context in conversation history
+      conversationService.saveMessage(remoteJid, 'user', text);
+      return;
     }
 
     // ── Active booking flow check ──────────────────────────────────
@@ -162,6 +183,9 @@ async function processMessage(remoteJid, text, pushName) {
     // Load conversation history
     const history = conversationService.getHistory(remoteJid);
 
+    // ── First-message sizzle greeting (SIZZLE-01 + FIX-03) ──
+    const isFirstMessage = history.length === 0;
+
     // Build messages with customer context enrichment
     const isAdmin = googleCommandHandler.isAdmin(remoteJid);
     let systemPrompt;
@@ -172,6 +196,10 @@ async function processMessage(remoteJid, text, pushName) {
       const ctx = getCustomerContext(remoteJid);
       const contextBlock = ctx ? buildContextBlock(ctx) : '';
       systemPrompt = buildSystemPrompt(contextBlock);
+      // Enhance system prompt for first-time users
+      if (isFirstMessage) {
+        systemPrompt += "\n\nThis is the customer's FIRST ever message. You MUST include AI disclosure: 'I\'m Racing Point Bot, your automated assistant. Say HUMAN anytime to reach our team!' and send an engaging welcome. Keep it warm and excited. Mention the free 5-min trial for first-timers.";
+      }
     }
     const conversationMessages = [
       ...history.map(msg => ({ role: msg.role, content: msg.content })),
@@ -182,7 +210,18 @@ async function processMessage(remoteJid, text, pushName) {
     const model = isAdmin ? config.claude.adminModel : config.claude.customerModel;
     const reply = await claudeService.chat(systemPrompt, conversationMessages, { model });
 
-    // ── Booking intent detection (triggers state machine flow) ─────
+    // ── Handoff detection: check BEFORE sending AI reply ──────────────
+    const recentHistory = conversationService.getHistory(remoteJid);
+    const handoffCheck = handoffService.shouldHandoff(remoteJid, text, recentHistory);
+    if (handoffCheck.trigger) {
+      await handoffService.executeHandoff(remoteJid, pushName, handoffCheck.reason, text);
+      conversationService.saveMessage(remoteJid, 'user', text);
+      logger.info({ remoteJid, pushName, reason: handoffCheck.reason }, 'Handoff triggered');
+      await evolutionService.sendPresence(remoteJid, 'paused');
+      return;
+    }
+
+        // ── Booking intent detection (triggers state machine flow) ─────
     const bookingIntentPatterns = [
       /which game would you like/i,
       /let me help you book/i,
@@ -331,14 +370,19 @@ async function processMessage(remoteJid, text, pushName) {
       }
     }
 
-    // Check for human handoff
+    // Check for human handoff (now routes through handoff service)
     if (reply.includes(HUMAN_HANDOFF_MARKER)) {
-      const handoffMsg = "I think it's best if our team helps you directly. Please contact us at +91 7981264279 — we'll be happy to assist!";
+      await handoffService.executeHandoff(remoteJid, pushName, 'ai_suggested_handoff', text);
       conversationService.saveMessage(remoteJid, 'user', text);
-      conversationService.saveMessage(remoteJid, 'assistant', handoffMsg);
-      await evolutionService.sendText(remoteJid, handoffMsg);
       await evolutionService.sendPresence(remoteJid, 'paused');
       return;
+    }
+
+    // ── Send sizzle greeting for first-time users (SIZZLE-01) ──
+    if (isFirstMessage && !isAdmin) {
+      await evolutionService.sendText(remoteJid, SIZZLE_GREETING);
+      conversationService.saveMessage(remoteJid, 'assistant', SIZZLE_GREETING);
+      logger.info({ remoteJid, pushName }, 'First-message sizzle greeting sent');
     }
 
     // Save to history
