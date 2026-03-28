@@ -155,6 +155,65 @@ function recordHumanReply(remoteJid) {
   `).run(now, now, remoteJid);
 }
 
+// ── Auto-resume timer ───────────────────────────────────────────────
+
+let autoResumeInterval = null;
+
+async function autoResumeStaleHandoffs() {
+  try {
+    const stale = getStaleHandoffs(120);
+    if (stale.length === 0) return;
+
+    logger.info({ count: stale.length }, 'Found stale handoffs to auto-resume');
+
+    for (const row of stale) {
+      const { remote_jid: remoteJid, reason, handoff_at } = row;
+
+      // Send apology to customer
+      const apologyMsg = "Hi! Sorry for the wait. Our team wasn't able to get back to you in time. I'm back to help! What can I assist you with?\n\nYou can always reach our team at +91 7981264279.";
+
+      try {
+        await evolutionService.sendText(remoteJid, apologyMsg);
+      } catch (err) {
+        logger.error({ err, remoteJid }, 'Failed to send auto-resume apology');
+      }
+
+      // Set ownership back to bot_active
+      setOwnership(remoteJid, 'bot_active', 'auto_resumed_2h_timeout');
+
+      // Notify staff
+      const phone = remoteJid.replace('@s.whatsapp.net', '');
+      const staffNotice = '*Auto-resumed:* ' + phone + ' \u2014 no human reply after 2h. Bot is active again.';
+      try {
+        await evolutionService.sendText(STAFF_JID, staffNotice);
+      } catch (err) {
+        logger.error({ err, remoteJid }, 'Failed to notify staff of auto-resume');
+      }
+
+      logger.info({ remoteJid, reason, handoff_at }, 'Auto-resumed after 2h timeout');
+    }
+  } catch (err) {
+    logger.error({ err }, 'Error in autoResumeStaleHandoffs');
+  }
+}
+
+function startAutoResumeTimer() {
+  if (autoResumeInterval) {
+    logger.warn('Auto-resume timer already running');
+    return;
+  }
+  autoResumeInterval = setInterval(autoResumeStaleHandoffs, 5 * 60 * 1000);
+  logger.info('Auto-resume timer started (every 5 min)');
+}
+
+function stopAutoResumeTimer() {
+  if (autoResumeInterval) {
+    clearInterval(autoResumeInterval);
+    autoResumeInterval = null;
+    logger.info('Auto-resume timer stopped');
+  }
+}
+
 module.exports = {
   getOwnership,
   setOwnership,
@@ -163,4 +222,7 @@ module.exports = {
   isBotActive,
   getStaleHandoffs,
   recordHumanReply,
+  autoResumeStaleHandoffs,
+  startAutoResumeTimer,
+  stopAutoResumeTimer,
 };
