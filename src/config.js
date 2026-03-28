@@ -11,6 +11,14 @@ module.exports = {
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE || 'Racing Point Reception',
   },
+  // Kapso (Meta Cloud API) - v2.0
+  kapso: {
+    apiKey: process.env.KAPSO_API_KEY || '',
+    staffPhoneNumberId: process.env.KAPSO_STAFF_PHONE_NUMBER_ID || '',
+    customerPhoneNumberId: process.env.KAPSO_CUSTOMER_PHONE_NUMBER_ID || '',
+    webhookSecret: process.env.KAPSO_WEBHOOK_SECRET || '',
+  },
+  USE_KAPSO: process.env.USE_KAPSO === 'true',
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,

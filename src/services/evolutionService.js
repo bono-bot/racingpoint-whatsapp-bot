@@ -1,9 +1,60 @@
 const config = require('../config');
 const logger = require('../utils/logger');
+const { KapsoClient } = require('../kapso/client');
+
+// ── Kapso dual-mode routing layer ──
+// When USE_KAPSO=true, messages route through Kapso SDK (Meta Cloud API).
+// When USE_KAPSO=false, existing Evolution API code runs unchanged.
+
+let customerKapso = null;
+let staffKapso = null;
+
+/**
+ * Get or lazily create the Kapso client for message sending.
+ * Currently uses the customer phone number ID for all outbound messages
+ * since this bot is the customer-facing AI bot.
+ */
+function getKapsoClient() {
+  if (!config.USE_KAPSO || !config.kapso.apiKey) return null;
+
+  if (!customerKapso) {
+    customerKapso = new KapsoClient({
+      apiKey: config.kapso.apiKey,
+      phoneNumberId: config.kapso.customerPhoneNumberId,
+      instanceName: 'customer',
+    });
+  }
+  return customerKapso;
+}
+
+/**
+ * Get the staff Kapso client (for future staff bot integration).
+ */
+function getStaffKapsoClient() {
+  if (!config.USE_KAPSO || !config.kapso.apiKey) return null;
+
+  if (!staffKapso) {
+    staffKapso = new KapsoClient({
+      apiKey: config.kapso.apiKey,
+      phoneNumberId: config.kapso.staffPhoneNumberId,
+      instanceName: 'staff',
+    });
+  }
+  return staffKapso;
+}
+
+// ── Evolution API (existing code, unchanged) ──
 
 const instanceEncoded = encodeURIComponent(config.evolution.instance);
 
 async function sendText(remoteJid, text) {
+  // Kapso routing
+  const kapso = getKapsoClient();
+  if (kapso) {
+    return kapso.sendText(remoteJid, text);
+  }
+
+  // Evolution API (existing)
   const url = `${config.evolution.url}/message/sendText/${instanceEncoded}`;
 
   const response = await fetch(url, {
@@ -29,6 +80,13 @@ async function sendText(remoteJid, text) {
 }
 
 async function sendPresence(remoteJid, presence) {
+  // Kapso routing (no-op for Cloud API)
+  const kapso = getKapsoClient();
+  if (kapso) {
+    return kapso.sendPresence(remoteJid, presence);
+  }
+
+  // Evolution API (existing)
   const url = `${config.evolution.url}/chat/updatePresence/${instanceEncoded}`;
 
   try {
@@ -62,6 +120,16 @@ async function sendPresence(remoteJid, presence) {
  * @param {Array<{text: string, id?: string}>} options.buttons - Button options (max 3 for buttons, any count for text fallback)
  */
 async function sendInteractive(remoteJid, options) {
+  // Kapso routing
+  const kapso = getKapsoClient();
+  if (kapso) {
+    // Build title from description (KapsoClient expects bodyText)
+    const bodyText = [options.title ? `*${options.title}*` : '', options.description || '']
+      .filter(Boolean).join('\n');
+    return kapso.sendButtons(remoteJid, bodyText, options.buttons);
+  }
+
+  // Evolution API (existing)
   // Try interactive buttons first (may not work on Evolution API v2.3.7)
   if (options.buttons.length <= 3) {
     try {
@@ -121,6 +189,15 @@ async function sendInteractive(remoteJid, options) {
  * @param {Array<{title: string, rows: Array<{title: string, description?: string, rowId: string}>}>} options.sections
  */
 async function sendList(remoteJid, options) {
+  // Kapso routing
+  const kapso = getKapsoClient();
+  if (kapso) {
+    const bodyText = [options.title ? `*${options.title}*` : '', options.description || '']
+      .filter(Boolean).join('\n');
+    return kapso.sendList(remoteJid, bodyText, options.sections);
+  }
+
+  // Evolution API (existing)
   // Try Evolution API sendList
   try {
     const url = `${config.evolution.url}/message/sendList/${instanceEncoded}`;

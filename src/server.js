@@ -5,7 +5,11 @@ const logger = require('./utils/logger');
 
 const app = express();
 
-app.use(express.json({ limit: '10mb' }));
+// Capture raw body for Kapso webhook HMAC signature verification
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 // Routes
 app.use(webhookRouter);
