@@ -1,5 +1,6 @@
 const { gmail, calendar, sheets, drive } = require('@racingpoint/google');
 const { getGoogleAuth } = require('./googleAuth');
+const campaignService = require('./campaignService');
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -22,6 +23,7 @@ function tryGoogleCommand(text) {
     'upcoming', 'newevent', 'deleteevent',
     'readsheet', 'writesheet',
     'drivelist', 'driveshare',
+    'campaign',
   ];
 
   if (!commands.includes(command)) return null;
@@ -120,6 +122,95 @@ async function executeGoogleCommand({ command, args }, remoteJid) {
       if (!args) return 'Usage: !driveshare <file-id>';
       const link = await drive.getShareableLink({ auth, fileId: args.trim() });
       return `Shareable link: ${link}`;
+    }
+
+    case 'campaign': {
+      const subParts = args.split(/\s+/);
+      const subCmd = subParts[0]?.toLowerCase();
+      const segmentArg = subParts.slice(1).join(' ');
+
+      if (!subCmd || subCmd === 'help') {
+        return `*Campaign Commands:*\n\n` +
+          `!campaign list — Show segments & customer counts\n` +
+          `!campaign templates — List available campaign templates\n` +
+          `!campaign preview <segment> — Preview message for a segment\n` +
+          `!campaign send <segment> — Prepare campaign (requires confirmation)\n` +
+          `!campaign confirm — Confirm and send the prepared campaign\n` +
+          `!campaign status — Show recent campaign history`;
+      }
+
+      if (subCmd === 'list') {
+        const segments = campaignService.listSegments();
+        if (Object.keys(segments).length === 0) return 'No segment data available. Run the segmentation analysis first.';
+        let result = '*Customer Segments:*\n\n';
+        for (const [seg, counts] of Object.entries(segments)) {
+          const hasTemplate = campaignService.getAvailableTemplates().includes(seg) ? '✅' : '—';
+          result += `${hasTemplate} *${seg}:* ${counts.total} total, ${counts.reachable} reachable on WhatsApp\n`;
+        }
+        result += '\n✅ = campaign template available';
+        return result;
+      }
+
+      if (subCmd === 'templates') {
+        const templates = campaignService.getAvailableTemplates();
+        return `*Available Campaign Templates:*\n\n${templates.map(t => `• ${t}`).join('\n')}`;
+      }
+
+      if (subCmd === 'preview') {
+        if (!segmentArg) return 'Usage: !campaign preview <segment name>';
+        const preview = campaignService.previewCampaign(segmentArg);
+        if (!preview) return `No template found for "${segmentArg}". Use !campaign templates to see available ones.`;
+        return `*Campaign Preview — ${preview.segment}*\n*Type:* ${preview.label}\n\n---\n${preview.preview}\n---`;
+      }
+
+      if (subCmd === 'send') {
+        if (!segmentArg) return 'Usage: !campaign send <segment name>';
+        const prepared = campaignService.prepareCampaign(segmentArg);
+        if (prepared.error) return `❌ ${prepared.error}`;
+
+        // Store for confirmation
+        campaignService.setPending(remoteJid, prepared);
+
+        return `*Ready to send campaign:*\n\n` +
+          `*Segment:* ${prepared.segment}\n` +
+          `*Type:* ${prepared.label}\n` +
+          `*Recipients:* ${prepared.recipientCount}\n\n` +
+          `*Preview:*\n${prepared.preview}\n\n` +
+          `⚠️ Reply *!campaign confirm* within 5 minutes to send.`;
+      }
+
+      if (subCmd === 'confirm') {
+        const pending = campaignService.getPending(remoteJid);
+        if (!pending) return '❌ No pending campaign to confirm. Use !campaign send <segment> first.';
+
+        // Execute async — don't block
+        campaignService.executeCampaign(pending).then(result => {
+          const msg = `✅ *Campaign completed!*\n\n` +
+            `*Segment:* ${pending.segment}\n` +
+            `*Sent:* ${result.sentCount}\n` +
+            `*Failed:* ${result.failedCount}\n` +
+            `*Campaign ID:* ${result.campaignId}`;
+          evolutionService.sendText(remoteJid, msg).catch(() => {});
+        }).catch(err => {
+          evolutionService.sendText(remoteJid, `❌ Campaign failed: ${err.message}`).catch(() => {});
+        });
+
+        return `🚀 Sending campaign to ${pending.recipientCount} customers in *${pending.segment}* segment...\n\nI'll notify you when it's complete.`;
+      }
+
+      if (subCmd === 'status') {
+        const stats = campaignService.getCampaignStats();
+        if (stats.length === 0) return 'No campaigns sent yet.';
+        let result = '*Recent Campaigns:*\n\n';
+        for (const s of stats) {
+          result += `*#${s.id}* ${s.segment} (${s.template_label})\n`;
+          result += `  ${s.sent_count}/${s.total_recipients} sent, ${s.failed_count} failed\n`;
+          result += `  Status: ${s.status} | ${s.created_at}\n\n`;
+        }
+        return result;
+      }
+
+      return `Unknown campaign subcommand "${subCmd}". Use !campaign help for options.`;
     }
 
     default:

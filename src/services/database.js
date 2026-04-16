@@ -161,8 +161,6 @@ function initSchema() {
       opted_in_at TEXT,
       opted_out_at TEXT,
       opt_source TEXT,
-      consent_text TEXT,
-      consent_at TEXT,
       last_message_at TEXT NOT NULL DEFAULT (datetime('now')),
       nudges_sent_today INTEGER NOT NULL DEFAULT 0,
       nudges_reset_date TEXT NOT NULL DEFAULT (date('now')),

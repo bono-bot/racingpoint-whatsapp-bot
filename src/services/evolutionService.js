@@ -244,4 +244,51 @@ async function sendList(remoteJid, options) {
   await sendText(remoteJid, lines.join('\n'));
 }
 
-module.exports = { sendText, sendPresence, sendInteractive, sendList };
+/**
+ * Send a Meta-approved template message via Evolution API.
+ * Templates must be pre-approved in Meta Business Manager.
+ *
+ * @param {string} remoteJid - WhatsApp recipient JID
+ * @param {string} templateName - Meta-approved template name
+ * @param {string[]} params - Positional text parameters for {{1}}, {{2}}, etc.
+ */
+async function sendTemplate(remoteJid, templateName, params) {
+  // Kapso routing
+  const kapso = getKapsoClient();
+  if (kapso && typeof kapso.sendTemplate === 'function') {
+    return kapso.sendTemplate(remoteJid, templateName, params);
+  }
+
+  // Evolution API
+  const url = `${config.evolution.url}/message/sendTemplate/${instanceEncoded}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': config.evolution.apiKey,
+    },
+    body: JSON.stringify({
+      number: remoteJid,
+      name: templateName,
+      language: 'en',
+      components: [
+        {
+          type: 'body',
+          parameters: params.map(p => ({ type: 'text', text: p })),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Evolution API sendTemplate error ${response.status}: ${body}`);
+  }
+
+  const data = await response.json();
+  logger.debug({ remoteJid, templateName }, 'Template sent via Evolution API');
+  return data;
+}
+
+module.exports = { sendText, sendPresence, sendInteractive, sendList, sendTemplate };

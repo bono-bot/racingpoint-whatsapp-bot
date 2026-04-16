@@ -12,7 +12,9 @@ const logger = require('../utils/logger');
  *   text: "Hello",
  *   pushName: "Customer",
  *   isInteractive: false,
- *   selectedId: null
+ *   selectedId: null,
+ *   source: "customer",
+ *   messageType: "text"
  * }
  *
  * Kapso webhook payload (whatsapp.message.received):
@@ -87,13 +89,15 @@ function adaptKapsoWebhook(kapsoPayload, source) {
         break;
 
       default:
-        // Unsupported message types (image, audio, video, document, location, etc.)
-        // For now, skip — media handling is a future plan
-        logger.info({ type: msg.type, from }, 'Kapso webhook: unsupported message type, skipping');
-        return null;
+        // Non-text messages (image, audio, video, document, location, sticker, contacts):
+        // Pass through with type metadata for FIX-02 handling
+        break;
     }
 
-    if (!text || text.trim().length === 0) {
+    const messageType = msg.type || 'unknown';
+
+    // For text messages, require non-empty text. For non-text, text will be null.
+    if (messageType === 'text' && (!text || text.trim().length === 0)) {
       return null;
     }
 
@@ -108,11 +112,12 @@ function adaptKapsoWebhook(kapsoPayload, source) {
     return {
       remoteJid,
       messageId: msg.id || `kapso_${Date.now()}`,
-      text: text.trim(),
+      text: text ? text.trim() : null,
       pushName,
       isInteractive,
       selectedId,
       source, // "staff" or "customer" — extra field for routing
+      messageType, // "text"|"image"|"audio"|"video"|"document"|"location"|"sticker"|"contacts"
     };
   } catch (err) {
     logger.error({ err, payload: kapsoPayload }, 'Failed to adapt Kapso webhook payload');
