@@ -3,7 +3,7 @@ require('dotenv').config();
 module.exports = {
   port: parseInt(process.env.PORT, 10) || 3000,
   claude: {
-    apiKey: process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '',
+    apiKey: process.env.OPENROUTER_KEY || process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || '',  // Phase 446 dual-read PACT-010: canonical OPENROUTER_KEY first; OPENROUTER_API_KEY deprecated-fallback (Phase 448 absorbs)
     customerModel: process.env.CLAUDE_MODEL_CUSTOMER || 'haiku',
     adminModel: process.env.CLAUDE_MODEL_ADMIN || 'sonnet',
   },

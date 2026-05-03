@@ -1,6 +1,10 @@
 const logger = require('../utils/logger');
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+// Phase 446 dual-read PACT-010: canonical OPENROUTER_KEY first; OPENROUTER_API_KEY deprecated-fallback (Phase 448 absorbs)
+const OPENROUTER_API_KEY = process.env.OPENROUTER_KEY || process.env.OPENROUTER_API_KEY;
+if (process.env.OPENROUTER_API_KEY && !process.env.OPENROUTER_KEY) {
+  console.warn('[deprecation] OPENROUTER_API_KEY env var is Phase 446 deprecated; rename to OPENROUTER_KEY (Phase 448 will hard-cut). PACT-010 mirror.');
+}
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ── PII redaction before sending to external AI ──────────────────────
@@ -32,7 +36,7 @@ function sanitizeOutput(reply) {
   // Strip any leaked system prompt fragments, API keys, internal JIDs
   let cleaned = reply
     .replace(/sk-or-v1-[a-zA-Z0-9]+/g, '[REDACTED]')
-    .replace(/OPENROUTER_API_KEY/g, '[REDACTED]')
+    .replace(/OPENROUTER_(API_)?KEY/g, '[REDACTED]')  // Phase 446 PACT-010: redact both legacy + canonical names
     .replace(/\d{10,}@s\.whatsapp\.net/g, '[REDACTED]')
     .replace(/rp-terminal-\d+/g, '[REDACTED]');
   return cleaned;
