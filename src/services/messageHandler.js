@@ -130,6 +130,18 @@ async function processMessage(remoteJid, text, pushName, messageType) {
       }
     }
 
+    // ── Captain (Uday) direct-access bypass — no AI auto-reply ──
+    // Captain has direct line to bono per user directive 2026-05-05.
+    // Any non-escalation message from Captain is treated as a command/request
+    // for bono session pickup. Bot saves to history + logs but does NOT auto-reply
+    // (no FALLBACK_REPLY interception, no Direct-Mode 15s timeout, no AI call).
+    // Bono reads via /root/bono-whatsapp.py unread or session-start doorbell.
+    if (remoteJid === ADMIN_JID && text) {
+      conversationService.saveMessage(remoteJid, 'user', text);
+      logger.info({ remoteJid, pushName, textLength: text.length }, 'Captain message saved — direct-access bypass (no auto-reply)');
+      return;
+    }
+
     // Blocked user check — no response, no AI cost
     if (spamGuard.isBlocked(remoteJid)) {
       logger.info({ remoteJid }, 'Blocked user message ignored');
