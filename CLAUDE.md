@@ -49,3 +49,12 @@
   _Why: SSH requires Tailscale up and leaves no audit trail; relay is always-on and returns structured results._
 - **Standing Rules Sync:** After modifying CLAUDE.md standing rules, always sync to Bono via comms-link so both AIs operate under the same rules.
   _Why: Rules drift between AIs causes inconsistent behavior and contradictory decisions in multi-agent tasks._
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

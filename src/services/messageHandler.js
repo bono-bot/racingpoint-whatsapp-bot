@@ -22,6 +22,7 @@ const { classifyIntent, scoreLeadTemperature, updateFunnel, detectFunnelAdvance 
 const { getOrCreateProfile, updateProfile, buildIntelligenceContext, eraseCustomerData } = require('./customerProfileService');
 const { scheduleFollowUp, updateLastMessageTime, handleOptInResponse, isOptedIn, buildFomoLine } = require('./followUpService');
 const { getCafeMenu, getCafeSpecials, getContextualCafeRecommendation, parseCafeInput } = require('./cafeService');
+const captainPactDispositionService = require('./captainPactDispositionService');
 
 // ── Lazy-loaded services (VIRAL-01, VIRAL-02) ──
 let _referralService = null;
@@ -134,11 +135,37 @@ async function processMessage(remoteJid, text, pushName, messageType) {
     // Captain has direct line to bono per user directive 2026-05-05.
     // Any non-escalation message from Captain is treated as a command/request
     // for bono session pickup. Bot saves to history + logs but does NOT auto-reply
-    // (no FALLBACK_REPLY interception, no Direct-Mode 15s timeout, no AI call).
-    // Bono reads via /root/bono-whatsapp.py unread or session-start doorbell.
+    // with AI; bono reads via /root/bono-whatsapp.py unread or session-start
+    // doorbell hook (/root/.claude/hooks/captain-whatsapp-prompt-scan.js).
+    //
+    // PART 48 Vector B+C extension (2026-05-07 ~03:35 IST):
+    //   - Vector B: send simple delivery-ack so Captain has perception
+    //     confirmation that message landed. Closes Layer-2 perception latency.
+    //   - Vector C: detect Q-disposition pattern (e.g. "Q1: RATIFY Q2: ...")
+    //     → parse + persist to pact_dispositions table + send richer ack
+    //     confirming parsed values. Closes Layer-1+2 latency for Q-paste class.
+    //   - Composes-with V2-MASTER-STATE §S-75 Captain Q1/Q2/Q3 ratify anchor.
+    //   - NO AI call — ack format is deterministic, parser is regex-only.
     if (remoteJid === ADMIN_JID && text) {
       conversationService.saveMessage(remoteJid, 'user', text);
-      logger.info({ remoteJid, pushName, textLength: text.length }, 'Captain message saved — direct-access bypass (no auto-reply)');
+      logger.info({ remoteJid, pushName, textLength: text.length }, 'Captain message saved — direct-access bypass (no AI auto-reply)');
+
+      try {
+        const dispositions = captainPactDispositionService.parseQDispositions(text);
+        let persistedCount = 0;
+        if (dispositions) {
+          persistedCount = captainPactDispositionService.persistDispositions(remoteJid, text, dispositions);
+          logger.info({ remoteJid, dispositions, persistedCount }, 'Captain Q-disposition pattern parsed + persisted');
+        }
+        const ackText = captainPactDispositionService.formatAck(dispositions);
+        // Save ack to conversation history so it appears in bot's own context
+        conversationService.saveMessage(remoteJid, 'assistant', ackText);
+        await evolutionService.sendText(remoteJid, ackText);
+        logger.info({ remoteJid, hasDispositions: !!dispositions, persistedCount }, 'Captain delivery-ack sent');
+      } catch (err) {
+        // Ack failure must not break the Captain bypass path; log + continue.
+        logger.error({ err, remoteJid }, 'Captain delivery-ack failed (Captain msg still saved)');
+      }
       return;
     }
 

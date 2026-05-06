@@ -228,6 +228,23 @@ function initSchema() {
       submitted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_challenge_entries ON challenge_entries(challenge_id, score_value DESC);
+
+    -- PART 48 Vector C — Captain WhatsApp Q-disposition parser persistence.
+    -- Each row = one parsed Q-value from a Captain WhatsApp inbound that
+    -- matched a Q-pattern. Multiple rows per source message (one per Q).
+    -- source_content preserved verbatim for forensic traceability.
+    CREATE TABLE IF NOT EXISTS pact_dispositions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      remote_jid TEXT NOT NULL,
+      source_content TEXT NOT NULL,
+      q_number INTEGER NOT NULL,
+      q_value TEXT NOT NULL,
+      parsed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      consumed_at TEXT,
+      consumed_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pact_dispositions_jid ON pact_dispositions(remote_jid, parsed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pact_dispositions_unconsumed ON pact_dispositions(consumed_at) WHERE consumed_at IS NULL;
   `);
 }
 
