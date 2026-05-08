@@ -226,6 +226,26 @@ function initSchema() {
       submitted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_challenge_entries ON challenge_entries(challenge_id, score_value DESC);
+
+    -- W1-S7+S8 staff PIN daily delivery audit log (PACT-DRAFT-pact-001-phase-1-wave-1-static-billing-engine.md)
+    -- Composes-with §S-82 Q1 disposition (Captain 2026-05-07) + Wallet-Framing-C security-debt-ledger
+    -- pin_hash stores SHA-256, NOT raw PIN (PACT-018 closure_phase=Phase-0.5c-AUTH credential-storage debt)
+    CREATE TABLE IF NOT EXISTS staff_pin_delivery_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      staff_id TEXT NOT NULL,
+      staff_whatsapp_jid TEXT,
+      pin_hash TEXT NOT NULL,
+      delivery_attempt_at TEXT NOT NULL,
+      delivery_ack_at TEXT,
+      delivery_status TEXT NOT NULL,
+      evolution_message_id TEXT,
+      fallback_attempt_at TEXT,
+      fallback_reason TEXT,
+      delivery_date_ist TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_pin_delivery_status ON staff_pin_delivery_events(delivery_status, delivery_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_pin_delivery_staff_date ON staff_pin_delivery_events(staff_id, delivery_date_ist DESC);
   `);
 }
 
