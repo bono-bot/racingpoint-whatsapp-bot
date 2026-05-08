@@ -137,7 +137,10 @@ sqlite3 data/whatsapp.db "SELECT * FROM staff_pin_delivery_events ORDER BY id DE
 
 **DO NOT register cron until ALL of:**
 1. james W1-S6 PIN-LOCKOUT auto-rotate Rust substrate MERGED to racecontrol main
-2. STUB module `racecontrolStubs.js` replaced with real HTTP calls
+2. STUB module `racecontrolStubs.js` replaced with real HTTP calls — split into 3 sub-gates (PART 51 segment-L 2026-05-08 ~21:30 IST):
+   - **2a.** (DONE pre-W1-S6) `racecontrolApiClient.js` authored at `src/services/racecontrolApiClient.js` (~170 lines; 2 HTTP wrappers + auth header + envelope contract checks + 4 error classes); 18/18 mock-fetch unit tests PASS via `node scripts/test-racecontrol-api-client.js`; `racecontrolStubs.js` extended with tri-modal runtime (HTTP / STUB / default-throw) gated on `STAFF_PIN_HTTP_ENABLED` env flag; 20/20 delegation tests PASS via `node scripts/test-racecontrol-stubs-delegation.js`
+   - **2b.** (POST-W1-S6) Set `STAFF_PIN_HTTP_ENABLED=true` + `RACECONTROL_API_URL=...` + `RACECONTROL_SERVICE_KEY=...` in `racingpoint-whatsapp-bot/.env` — flips runtime path from STUB to live HTTP delegation
+   - **2c.** (POST-W1-S6) Real racecontrol endpoint smoke test under Captain explicit auth — first call to GET /api/v2/staff/STAFF_001/pin-of-the-day from production env exercises full chain (delegated client → racecontrol → response envelope check); see gate #4 below
 3. Service key configured in `racingpoint-whatsapp-bot/.env` for racecontrol API auth
 4. End-to-end test with 1 real staff member (Captain explicit auth required for first test target)
 5. Captain disposition on Q1.e/f/g/h overrides (or default-AGREE on bono defaults)
